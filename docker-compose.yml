@@ -1,0 +1,111 @@
+---
+version: '3.8'
+services:
+  postgres:
+    image: postgres:12.0-alpine
+    restart: always
+    container_name: postgres
+    env_file:
+      - ./environment/global.env
+      - ./environment/postgres.env
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - database:/var/lib/postgresql/data
+      - backup:/var/lib/postgresql/backup
+    networks:
+        database:
+           ipv4_address: 10.190.0.2
+
+  zabbix-server:
+    image: zabbix/zabbix-server-pgsql:ubuntu-5.0.0
+    restart: always
+    container_name: zabbix-server
+    env_file:
+      - ./environment/global.env
+      - ./environment/zabbix-server.env
+    volumes:
+      - zabbix-server-mibs:/var/lib/zabbix/mibs
+      - zabbix-server-modules:/var/lib/zabbix/modules
+      - zabbix-server-externalscripts:/usr/lib/zabbix/externalscripts
+      - zabbix-server-alertscripts:/usr/lib/zabbix/alertscripts
+    networks:
+        database:
+           ipv4_address: 10.190.0.3
+        exported_instances:
+           ipv4_address: 10.190.1.3
+    ports:
+      - 10051:10051
+      - 161:161
+    depends_on:
+      - postgres
+
+  zabbix-web:
+    image: zabbix/zabbix-web-nginx-pgsql:alpine-5.0.0
+    restart: always
+    container_name: zabbix-web
+    env_file:
+      - ./environment/global.env
+      - ./environment/zabbix-web.env
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+        database:
+           ipv4_address: 10.190.0.4
+        exported_instances:
+           ipv4_address: 10.190.1.4
+    ports:
+      - 8080:8080
+    depends_on:
+      - postgres
+      - zabbix-server
+
+  zabbix-agent:
+    image: zabbix/zabbix-agent:alpine-5.0.0
+    restart: always
+    container_name: zabbix-agent
+    env_file:
+      - ./environment/global.env
+      - ./environment/zabbix-agent.env
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+        exported_instances:
+           ipv4_address: 10.190.1.5
+    ports:
+      - 10050
+
+volumes:
+  # Postgres Volumes
+  database:
+    driver: local
+  backup:
+    driver: local
+
+  # Zabbix Volumes
+  zabbix-server-mibs:
+    driver: local
+  zabbix-server-modules:
+    driver: local
+  zabbix-server-externalscripts:
+    driver: local
+  zabbix-server-alertscripts:
+    driver: local
+
+networks:
+  database:
+    driver: bridge
+    internal: true
+    ipam:
+        driver: default
+        config:
+            - subnet: 10.190.0.0/29
+
+  exported_instances:
+    driver: bridge
+    ipam:
+        driver: default
+        config:
+            - subnet: 10.190.1.0/29
